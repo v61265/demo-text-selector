@@ -1,18 +1,23 @@
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState /* eslint-disable-line */,
 } from 'react';
 import styled from 'styled-components';
 import axios from 'axios';
 import 'regenerator-runtime/runtime';
+import useWindowSize from '../hooks/useViewports';
 
 /**
  *  @param {Object} opts
  *  @param {string} [opts.className]
  *  @param {string} [jsonUrl]
  *  @param {string} [backgroundColor]
+ *  @param {string} [circleUrl]
+ *  @param {string} [buttonBackground]
+ *  @param {string} [buttonWording]
  */
 export default function TextSelector({
   className,
@@ -23,13 +28,14 @@ export default function TextSelector({
   buttonWording = '其他案例',
 }) {
   const firstOrder = 0;
+  const { height } = useWindowSize();
   const allContainerRef = useRef(null);
   const nowEmphasizedSpanRef = useRef(null);
+  const itemStartRef = useRef(null);
   const listRef = useRef(null);
   const [data, setData] = useState([]);
   const [emphasizedIndex, setEmphasizedIndex] = useState(0);
   const [leftOffset, setLeftOffset] = useState(0);
-  const [isEmphasized, setIsEmphasized] = useState(false);
   const [translateToParagraph, settranslateToParagraph] = useState(0);
 
   function removeHtmlTags(inputString) {
@@ -65,15 +71,8 @@ export default function TextSelector({
     }
   }, [jsonUrl]);
 
-  const handleOnClick = () => {
-    if (isEmphasized) return;
-    setEmphasizedIndex((prev) => prev + 1);
-    setIsEmphasized(true);
-  };
-
   const handleOnClickBtn = () => {
-    if (!isEmphasized) return;
-    setIsEmphasized(false);
+    setEmphasizedIndex((prev) => prev + 1);
   };
 
   useEffect(() => {
@@ -89,42 +88,42 @@ export default function TextSelector({
     shiftLeft();
 
     fetchData();
-
-    // wait 5s and emphasized first item
-    setTimeout(() => {
-      setIsEmphasized(true);
-    }, 5000);
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
-    if (nowEmphasizedSpanRef.current) {
-      settranslateToParagraph(
-        listRef.current.offsetLeft - nowEmphasizedSpanRef.current.offsetLeft
-      );
-      window.scrollTo({
-        top:
-          nowEmphasizedSpanRef.current?.offsetTop +
-          nowEmphasizedSpanRef.current?.offsetHeight +
-          500,
-        behavior: 'smooth',
-      });
+    const element = itemStartRef.current;
+    if (typeof element?.getBoundingClientRect === 'function') {
+      const rect = element.getBoundingClientRect();
+      const leftOffset = rect?.x ?? rect?.left ?? 0;
+      console.log({ leftOffset });
+      settranslateToParagraph(listRef.current.offsetLeft - leftOffset);
     }
-  }, [emphasizedIndex, isEmphasized, nowEmphasizedSpanRef]);
+  }, [emphasizedIndex, itemStartRef]);
 
   return (
     <Container
       ref={allContainerRef}
       className={className}
-      style={{ background: backgroundColor }}
+      backgroundColor={backgroundColor}
       leftOffset={leftOffset}
-      onClick={handleOnClick}
     >
-      <CaseList ref={listRef}>
+      <CaseList
+        ref={listRef}
+        translateY={
+          listRef.current?.offsetTop -
+          nowEmphasizedSpanRef.current?.offsetTop +
+          height * (1 / 3)
+        }
+      >
         {data?.map((dataItem, index) => {
           return (
             <span key={index}>
-              {dataItem.order === emphasizedIndex && isEmphasized ? (
-                <EmphasizeWrapper ref={nowEmphasizedSpanRef}>
+              {dataItem.order === emphasizedIndex ? (
+                <EmphasizeWrapper
+                  ref={nowEmphasizedSpanRef}
+                  className='nowItem'
+                >
+                  <Anchor ref={itemStartRef} />
                   <EmphasizedItem
                     key={index}
                     dangerouslySetInnerHTML={{ __html: dataItem.content }}
@@ -143,7 +142,7 @@ export default function TextSelector({
                   </NextBtn>
                 </EmphasizeWrapper>
               ) : (
-                <GreyItem key={index} isAnimation={!isEmphasized}>
+                <GreyItem key={index}>
                   {removeHtmlTags(dataItem.content)}
                 </GreyItem>
               )}
@@ -160,11 +159,37 @@ const Container = styled.div`
   position: relative;
   min-width: 100vw;
   max-width: 100vw;
-  min-height: 100vw;
+  min-height: calc(100vh - 96px);
+  max-height: calc(100vh - 96px);
   display: flex;
-  align-items: center;
+  // align-items: center;
   justify-content: center;
   overflow: hidden;
+  padding: 48px 20px;
+  border-bottom: 48px;
+  background: ${(props) => props.backgroundColor};
+  ::before {
+    content: '';
+    width: 100vw;
+    height: 48px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: #fff;
+    background: ${(props) => props.backgroundColor};
+    z-index: 104;
+  }
+  ::after {
+    content: '';
+    width: 100vw;
+    height: 48px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    background: #fff;
+    background: ${(props) => props.backgroundColor};
+    z-index: 200;
+  }
   ${
     /**
      * @param {Object} props
@@ -178,8 +203,8 @@ const Container = styled.div`
 `;
 
 const CaseList = styled.ul`
+  poaition: relative;
   max-width: 712px;
-  margin: 48px 20px;
   font-family: 'Noto Sans TC';
   font-style: normal;
   font-weight: 350;
@@ -187,15 +212,12 @@ const CaseList = styled.ul`
   line-height: 180%;
   text-align: justify;
   color: #fff;
+  transition: 1.5s;
+  transform: translate(0, ${(props) => props.translateY}px);
 `;
 const GreyItem = styled.li`
   display: inline;
   color: #505050;
-  ${(props) =>
-    props.isAnimation &&
-    `
-    background: rgba(225, 225, 225, 0.3);
-  `}
 `;
 
 const EmphasizeWrapper = styled.span`
@@ -230,6 +252,9 @@ const NextBtn = styled.button`
   font-size: 14px;
   line-height: 180%;
   color: #ffffff;
+  display: flex;
+  justify-contnet: center;
+  align-items: center;
   background-image: url(${(props) => props.buttonBackground});
   border: 0;
   outline: 0;
@@ -242,4 +267,12 @@ const NextBtn = styled.button`
   &:hover {
     cursor: pointer;
   }
+`;
+
+const Anchor = styled.span`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
 `;
