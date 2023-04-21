@@ -9,11 +9,12 @@ import styled from 'styled-components';
 import axios from 'axios';
 import 'regenerator-runtime/runtime';
 import useWindowSize from '../hooks/useViewports';
+import { useInView } from 'react-intersection-observer';
 
 /**
  *  @param {Object} opts
  *  @param {string} [opts.className]
- *  @param {string} [jsonUrl]
+ *  @param {string[]} [jsonUrls]
  *  @param {string} [backgroundColor]
  *  @param {string} [circleUrl]
  *  @param {string} [buttonBackground]
@@ -21,7 +22,10 @@ import useWindowSize from '../hooks/useViewports';
  */
 export default function TextSelector({
   className,
-  jsonUrl = 'https://storage.googleapis.com/data-journalism-public/2023_psycho/ai_thousand.json',
+  jsonUrls = [
+    'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/test-01.json?asd',
+    'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/test-02.json',
+  ],
   backgroundColor = '#000000',
   circleUrl = 'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/hsuan_test.png',
   buttonBackground = 'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/%E6%9C%AA%E5%91%BD%E5%90%8D%E7%9A%84%E4%BD%9C%E5%93%81%20%E6%8B%B7%E8%B2%9D2%202.png',
@@ -37,22 +41,32 @@ export default function TextSelector({
   const [emphasizedIndex, setEmphasizedIndex] = useState(0);
   const [leftOffset, setLeftOffset] = useState(0);
   const [translateToParagraph, settranslateToParagraph] = useState(0);
+  const [jsonFileIndex, setJsonFileIndex] = useState(0);
+
+  const dataLength = useMemo(() => {
+    let result = 0;
+    data.forEach((list) => {
+      result += list.length;
+    });
+    return result;
+  }, [data]);
 
   function removeHtmlTags(inputString) {
     const regex = /(<([^>]+)>)/gi;
-    return inputString.replace(regex, '');
+    return inputString?.replace(regex, '');
   }
 
-  const fetchData = useCallback(async () => {
-    try {
-      const { data } = await axios.get(jsonUrl);
-      const orderArray = Array.from(
-        { length: data.length - 1 },
-        (_, index) => index + 1
-      );
-      setData(
-        data.map((item, index) => {
-          if (index === firstOrder) {
+  const fetchData = useCallback(
+    async (jsonIndex) => {
+      if (data[jsonIndex]) return;
+      try {
+        const { data: resData } = await axios.get(jsonUrls[jsonIndex]);
+        const orderArray = Array.from(
+          { length: resData.length - 1 },
+          (_, index) => (jsonIndex ? dataLength + index - 1 : index + 1)
+        );
+        const newData = resData.map((item, index) => {
+          if (index === firstOrder && !dataLength) {
             return {
               ...item,
               order: 0,
@@ -64,12 +78,18 @@ export default function TextSelector({
             ...item,
             order,
           };
-        })
-      );
-    } catch (e) {
-      console.log(e);
-    }
-  }, [jsonUrl]);
+        });
+        setData((prev) => {
+          const newList = [...prev];
+          newList[jsonIndex] = newData;
+          return newList;
+        });
+      } catch (e) {
+        console.log(e);
+      }
+    },
+    [dataLength]
+  );
 
   const handleOnClickBtn = () => {
     setEmphasizedIndex((prev) => prev + 1);
@@ -78,7 +98,7 @@ export default function TextSelector({
   useEffect(() => {
     // Adjust video block to cover the whole viewport (100vw)
     const shiftLeft = function () {
-      const containerElement = allContainerRef.current;
+      const containerElement = allContainerRef?.current;
       if (typeof containerElement?.getBoundingClientRect === 'function') {
         const rect = containerElement.getBoundingClientRect();
         const leftOffset = rect?.x ?? rect?.left ?? 0;
@@ -86,16 +106,28 @@ export default function TextSelector({
       }
     };
     shiftLeft();
+  }, [allContainerRef]);
 
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => {
+    if (!data[jsonFileIndex]) {
+      fetchData(jsonFileIndex);
+    }
+  }, [jsonFileIndex]);
+
+  useEffect(() => {
+    if (emphasizedIndex >= dataLength - 5 && emphasizedIndex) {
+      setJsonFileIndex((prev) => prev + 1);
+    }
+    if (emphasizedIndex && !nowEmphasizedSpanRef.current) {
+      setJsonFileIndex(0);
+    }
+  }, [dataLength, emphasizedIndex]);
 
   useEffect(() => {
     const element = itemStartRef.current;
     if (typeof element?.getBoundingClientRect === 'function') {
       const rect = element.getBoundingClientRect();
       const leftOffset = rect?.x ?? rect?.left ?? 0;
-      console.log({ leftOffset });
       settranslateToParagraph(listRef.current.offsetLeft - leftOffset);
     }
   }, [emphasizedIndex, itemStartRef]);
@@ -115,39 +147,41 @@ export default function TextSelector({
           height * (1 / 3)
         }
       >
-        {data?.map((dataItem, index) => {
-          return (
-            <span key={index}>
-              {dataItem.order === emphasizedIndex ? (
-                <EmphasizeWrapper
-                  ref={nowEmphasizedSpanRef}
-                  className='nowItem'
-                >
-                  <Anchor ref={itemStartRef} />
-                  <EmphasizedItem
-                    key={index}
-                    dangerouslySetInnerHTML={{ __html: dataItem.content }}
-                  />
-                  <EmpasizedCircle
-                    src={circleUrl}
-                    translateToParagraph={translateToParagraph}
-                  />
-                  <NextBtn
-                    buttonBackground={buttonBackground}
-                    translateToParagraph={translateToParagraph}
-                    paraWidth={listRef.current?.offsetWidth}
-                    onClick={handleOnClickBtn}
+        {data.map((list, listIndex) => {
+          return list?.map((dataItem, index) => {
+            return (
+              <span key={index}>
+                {dataItem.order === emphasizedIndex ? (
+                  <EmphasizeWrapper
+                    ref={nowEmphasizedSpanRef}
+                    className='nowItem'
                   >
-                    {buttonWording}
-                  </NextBtn>
-                </EmphasizeWrapper>
-              ) : (
-                <GreyItem key={index}>
-                  {removeHtmlTags(dataItem.content)}
-                </GreyItem>
-              )}
-            </span>
-          );
+                    <Anchor ref={itemStartRef} />
+                    <EmphasizedItem
+                      key={index}
+                      dangerouslySetInnerHTML={{ __html: dataItem.content }}
+                    />
+                    <EmpasizedCircle
+                      src={circleUrl}
+                      translateToParagraph={translateToParagraph}
+                    />
+                    <NextBtn
+                      buttonBackground={buttonBackground}
+                      translateToParagraph={translateToParagraph}
+                      paraWidth={listRef.current?.offsetWidth}
+                      onClick={handleOnClickBtn}
+                    >
+                      {buttonWording}
+                    </NextBtn>
+                  </EmphasizeWrapper>
+                ) : (
+                  <GreyItem key={index}>
+                    {removeHtmlTags(dataItem.content)}
+                  </GreyItem>
+                )}
+              </span>
+            );
+          });
         })}
       </CaseList>
     </Container>
@@ -165,8 +199,9 @@ const Container = styled.div`
   // align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 48px 20px;
+  padding: 48px 0;
   border-bottom: 48px;
+  scroll-snap-type: y;
   background: ${(props) => props.backgroundColor};
   ::before {
     content: '';
@@ -214,6 +249,7 @@ const CaseList = styled.ul`
   color: #fff;
   transition: 1.5s;
   transform: translate(0, ${(props) => props.translateY}px);
+  heigth: 100vh;
 `;
 const GreyItem = styled.li`
   display: inline;
