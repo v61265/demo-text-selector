@@ -9,7 +9,6 @@ import styled from 'styled-components';
 import axios from 'axios';
 import 'regenerator-runtime/runtime';
 import useWindowSize from '../hooks/useViewports';
-import { useInView } from 'react-intersection-observer';
 import { InView } from 'react-intersection-observer';
 
 /**
@@ -24,12 +23,12 @@ import { InView } from 'react-intersection-observer';
 export default function TextSelector({
   className,
   jsonUrls = [
-    'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/test-01.json?asd',
-    'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/test-02.json',
+    'https://v61265.github.io/demo-text-selector/test-01.json',
+    'https://v61265.github.io/demo-text-selector/test-02.json',
   ],
   backgroundColor = '#000000',
-  circleUrl = 'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/hsuan_test.png',
-  buttonBackground = 'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/%E6%9C%AA%E5%91%BD%E5%90%8D%E7%9A%84%E4%BD%9C%E5%93%81%20%E6%8B%B7%E8%B2%9D2%202.png',
+  circleUrl = 'https://www.mirrormedia.mg/campaigns/tyreplus2022/hsuan_test.png',
+  buttonBackground = 'https://www.mirrormedia.mg/campaigns/tyreplus2022/%E6%9C%AA%E5%91%BD%E5%90%8D%E7%9A%84%E4%BD%9C%E5%93%81%20%E6%8B%B7%E8%B2%9D2%202.png',
   buttonWording = '其他案例',
   debuggedFile = null,
 }) {
@@ -44,7 +43,7 @@ export default function TextSelector({
   const [emphasizedIndex, setEmphasizedIndex] = useState(0);
   const [leftOffset, setLeftOffset] = useState(0);
   const [translateToParagraph, settranslateToParagraph] = useState(0);
-  const [jsonFileIndex, setJsonFileIndex] = useState(debuggedFile - 1 || 0);
+  const [jsonFileIndex, setJsonFileIndex] = useState(null);
 
   const dataLength = useMemo(() => {
     let result = 0;
@@ -87,9 +86,11 @@ export default function TextSelector({
 
   const fetchData = useCallback(
     async (jsonIndex) => {
+      console.log('fetch data', data[jsonIndex], jsonUrls[jsonIndex], jsonUrls);
       if (data[jsonIndex] || !jsonUrls[jsonIndex]) return;
       try {
         const { data: resData } = await axios.get(jsonUrls[jsonIndex]);
+        console.log({ resData });
         const orderArray = Array.from(
           { length: jsonIndex ? resData.length : resData.length - 1 },
           (_, index) => (jsonIndex ? dataLength + index : index + 1)
@@ -201,6 +202,8 @@ export default function TextSelector({
   useEffect(() => {
     if (debuggedFile) {
       setJsonFileIndex(debuggedFile - 1);
+    } else {
+      setJsonFileIndex(0);
     }
   }, [debuggedFile]);
 
@@ -211,7 +214,7 @@ export default function TextSelector({
       const leftOffset = rect?.x ?? rect?.left ?? 0;
       settranslateToParagraph(listRef.current.offsetLeft - leftOffset);
     }
-  }, [emphasizedIndex, itemStartRef]);
+  }, [emphasizedIndex, data]);
 
   return (
     <InView onChange={hangleOnChangeInview} threshold={[0.15, 0.85]}>
