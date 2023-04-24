@@ -10,6 +10,7 @@ import axios from 'axios';
 import 'regenerator-runtime/runtime';
 import useWindowSize from '../hooks/useViewports';
 import { useInView } from 'react-intersection-observer';
+import { InView } from 'react-intersection-observer';
 
 /**
  *  @param {Object} opts
@@ -30,8 +31,10 @@ export default function TextSelector({
   circleUrl = 'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/hsuan_test.png',
   buttonBackground = 'https://storage.googleapis.com/statics.mirrormedia.mg/campaigns/tyreplus2022/%E6%9C%AA%E5%91%BD%E5%90%8D%E7%9A%84%E4%BD%9C%E5%93%81%20%E6%8B%B7%E8%B2%9D2%202.png',
   buttonWording = '其他案例',
+  debuggedFile = null,
 }) {
   const firstOrder = 0;
+  let previousRatio = 0;
   const { height } = useWindowSize();
   const allContainerRef = useRef(null);
   const nowEmphasizedSpanRef = useRef(null);
@@ -41,7 +44,7 @@ export default function TextSelector({
   const [emphasizedIndex, setEmphasizedIndex] = useState(0);
   const [leftOffset, setLeftOffset] = useState(0);
   const [translateToParagraph, settranslateToParagraph] = useState(0);
-  const [jsonFileIndex, setJsonFileIndex] = useState(0);
+  const [jsonFileIndex, setJsonFileIndex] = useState(debuggedFile - 1 || 0);
 
   const dataLength = useMemo(() => {
     let result = 0;
@@ -51,6 +54,32 @@ export default function TextSelector({
     return result;
   }, [data]);
 
+  const renderedData = useMemo(() => {
+    const returnArr = [];
+    data.forEach((item) => {
+      returnArr.push(...item);
+    });
+    const datasWithoutorder = returnArr.map((item) => {
+      return {
+        ...item,
+        order: -1,
+      };
+    });
+    if (returnArr.length < 20) {
+      returnArr.unshift(...datasWithoutorder);
+      returnArr.push(...datasWithoutorder);
+    } else {
+      returnArr.unshift(
+        ...datasWithoutorder.slice(
+          datasWithoutorder.length - 20,
+          datasWithoutorder.length - 1
+        )
+      );
+      returnArr.push(...datasWithoutorder.slice(21));
+    }
+    return returnArr;
+  }, [data]);
+
   function removeHtmlTags(inputString) {
     const regex = /(<([^>]+)>)/gi;
     return inputString?.replace(regex, '');
@@ -58,15 +87,15 @@ export default function TextSelector({
 
   const fetchData = useCallback(
     async (jsonIndex) => {
-      if (data[jsonIndex]) return;
+      if (data[jsonIndex] || !jsonUrls[jsonIndex]) return;
       try {
         const { data: resData } = await axios.get(jsonUrls[jsonIndex]);
         const orderArray = Array.from(
-          { length: resData.length - 1 },
-          (_, index) => (jsonIndex ? dataLength + index - 1 : index + 1)
+          { length: jsonIndex ? resData.length : resData.length - 1 },
+          (_, index) => (jsonIndex ? dataLength + index : index + 1)
         );
         const newData = resData.map((item, index) => {
-          if (index === firstOrder && !dataLength) {
+          if (index === firstOrder && !jsonIndex) {
             return {
               ...item,
               order: 0,
@@ -93,6 +122,55 @@ export default function TextSelector({
 
   const handleOnClickBtn = () => {
     setEmphasizedIndex((prev) => prev + 1);
+    if (emphasizedIndex > dataLength - 2) {
+      setEmphasizedIndex(1);
+    }
+  };
+
+  const getScrollDirection = () => {
+    let direction = null;
+    if (allContainerRef.current) {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > allContainerRef.current.scrollY) {
+        direction = 'down';
+      } else if (currentScrollY < allContainerRef.current.scrollY) {
+        direction = 'up';
+      }
+      allContainerRef.current.scrollY = currentScrollY;
+    }
+    return direction;
+  };
+
+  const hangleOnChangeInview = (inView, entry) => {
+    const currentRatio = entry.intersectionRatio;
+    const direction = getScrollDirection();
+    const { isIntersecting } = entry;
+    if (direction === 'down') {
+      if (currentRatio > previousRatio && isIntersecting) {
+        window.scrollTo({
+          top: allContainerRef.current.offsetTop,
+          behavior: 'smooth',
+        });
+      } else {
+        window.scrollTo({
+          top: allContainerRef.current.offsetTop + height,
+          behavior: 'smooth',
+        });
+      }
+    } else if (direction === 'up') {
+      if (currentRatio < previousRatio) {
+        window.scrollTo({
+          top: allContainerRef.current.offsetTop - height,
+          behavior: 'smooth',
+        });
+      } else {
+        window.scrollTo({
+          top: allContainerRef.current.offsetTop,
+          behavior: 'smooth',
+        });
+      }
+    }
+    previousRatio = currentRatio;
   };
 
   useEffect(() => {
@@ -115,13 +193,16 @@ export default function TextSelector({
   }, [jsonFileIndex]);
 
   useEffect(() => {
-    if (emphasizedIndex >= dataLength - 5 && emphasizedIndex) {
+    if (emphasizedIndex >= dataLength - 3 && emphasizedIndex) {
       setJsonFileIndex((prev) => prev + 1);
     }
-    if (emphasizedIndex && !nowEmphasizedSpanRef.current) {
-      setJsonFileIndex(0);
-    }
   }, [dataLength, emphasizedIndex]);
+
+  useEffect(() => {
+    if (debuggedFile) {
+      setJsonFileIndex(debuggedFile - 1);
+    }
+  }, [debuggedFile]);
 
   useEffect(() => {
     const element = itemStartRef.current;
@@ -133,24 +214,24 @@ export default function TextSelector({
   }, [emphasizedIndex, itemStartRef]);
 
   return (
-    <Container
-      ref={allContainerRef}
-      className={className}
-      backgroundColor={backgroundColor}
-      leftOffset={leftOffset}
-    >
-      <CaseList
-        ref={listRef}
-        translateY={
-          listRef.current?.offsetTop -
-          nowEmphasizedSpanRef.current?.offsetTop +
-          height * (1 / 3)
-        }
+    <InView onChange={hangleOnChangeInview} threshold={[0.15, 0.85]}>
+      <Container
+        ref={allContainerRef}
+        className={className}
+        backgroundColor={backgroundColor}
+        leftOffset={leftOffset}
       >
-        {data.map((list, listIndex) => {
-          return list?.map((dataItem, index) => {
+        <CaseList
+          ref={listRef}
+          translateY={
+            listRef.current?.offsetTop -
+              nowEmphasizedSpanRef.current?.offsetTop +
+              height * (1 / 3) || -height * (1 / 3)
+          }
+        >
+          {renderedData.map((dataItem, dataIndex) => {
             return (
-              <span key={index}>
+              <span key={dataIndex}>
                 {dataItem.order === emphasizedIndex ? (
                   <EmphasizeWrapper
                     ref={nowEmphasizedSpanRef}
@@ -158,7 +239,6 @@ export default function TextSelector({
                   >
                     <Anchor ref={itemStartRef} />
                     <EmphasizedItem
-                      key={index}
                       dangerouslySetInnerHTML={{ __html: dataItem.content }}
                     />
                     <EmpasizedCircle
@@ -175,16 +255,14 @@ export default function TextSelector({
                     </NextBtn>
                   </EmphasizeWrapper>
                 ) : (
-                  <GreyItem key={index}>
-                    {removeHtmlTags(dataItem.content)}
-                  </GreyItem>
+                  <GreyItem>{removeHtmlTags(dataItem.content)}</GreyItem>
                 )}
               </span>
             );
-          });
-        })}
-      </CaseList>
-    </Container>
+          })}
+        </CaseList>
+      </Container>
+    </InView>
   );
 }
 
@@ -196,7 +274,6 @@ const Container = styled.div`
   min-height: calc(100vh - 96px);
   max-height: calc(100vh - 96px);
   display: flex;
-  // align-items: center;
   justify-content: center;
   overflow: hidden;
   padding: 48px 0;
@@ -269,7 +346,7 @@ const EmpasizedCircle = styled.img`
   width: 100vw;
   max-width: 900px;
   height: calc(200% + 100px);
-  transform: translate(${(props) => props.translateToParagraph - 40}px, -50px);
+  transform: translate(${(props) => props.translateToParagraph - 40}px, -30%);
 `;
 
 const EmphasizedItem = styled.span``;

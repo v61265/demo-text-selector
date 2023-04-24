@@ -1,6 +1,6 @@
 import './App.css';
 import TextSelector from './components/text-selector';
-import React from 'react'; // eslint-disable-line
+import React, { useEffect, useState } from 'react'; // eslint-disable-line
 import styled from 'styled-components';
 import { createRoot } from 'react-dom/client';
 
@@ -21,10 +21,15 @@ const TestWrapper = styled.div`
 root.render();
 
 function App() {
+  const [debuggedFile, setDebuggedFile] = useState(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDebuggedFile(parseInt(params.get('debuggedFile')));
+  }, []);
   return (
     <TestWrapper>
       <MockContentBlock />
-      <TextSelector />
+      <TextSelector debuggedFile={debuggedFile} />
       <MockContentBlock />
     </TestWrapper>
   );
