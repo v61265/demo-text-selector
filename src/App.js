@@ -22,14 +22,16 @@ root.render();
 
 function App() {
   const [debuggedFile, setDebuggedFile] = useState(null);
+  const [isDebugMode, setIsDebugMode] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setDebuggedFile(parseInt(params.get('debuggedFile')));
+    setIsDebugMode(params.get('debuggedMode'));
   }, []);
   return (
     <TestWrapper>
       <MockContentBlock />
-      <TextSelector debuggedFile={debuggedFile} />
+      <TextSelector debuggedFile={debuggedFile} isDebugMode={isDebugMode} />
       <MockContentBlock />
     </TestWrapper>
   );

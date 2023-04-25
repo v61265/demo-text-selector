@@ -10,6 +10,7 @@ import axios from 'axios';
 import 'regenerator-runtime/runtime';
 import useWindowSize from '../hooks/useViewports';
 import { InView } from 'react-intersection-observer';
+import Debugger from './debugger';
 
 /**
  *  @param {Object} opts
@@ -31,6 +32,7 @@ export default function TextSelector({
   buttonBackground = 'https://www.mirrormedia.mg/campaigns/tyreplus2022/%E6%9C%AA%E5%91%BD%E5%90%8D%E7%9A%84%E4%BD%9C%E5%93%81%20%E6%8B%B7%E8%B2%9D2%202.png',
   buttonWording = '其他案例',
   debuggedFile = null,
+  isDebugMode = false,
 }) {
   const firstOrder = 0;
   let previousRatio = 0;
@@ -42,8 +44,9 @@ export default function TextSelector({
   const [data, setData] = useState([]);
   const [emphasizedIndex, setEmphasizedIndex] = useState(0);
   const [leftOffset, setLeftOffset] = useState(0);
-  const [translateToParagraph, settranslateToParagraph] = useState(0);
+  const [translateToParagraph, setTranslateToParagraph] = useState(0);
   const [jsonFileIndex, setJsonFileIndex] = useState(null);
+  let canScroll = true;
 
   const dataLength = useMemo(() => {
     let result = 0;
@@ -86,16 +89,21 @@ export default function TextSelector({
 
   const fetchData = useCallback(
     async (jsonIndex) => {
-      console.log('fetch data', data[jsonIndex], jsonUrls[jsonIndex], jsonUrls);
       if (data[jsonIndex] || !jsonUrls[jsonIndex]) return;
       try {
         const { data: resData } = await axios.get(jsonUrls[jsonIndex]);
         console.log({ resData });
+        const isContinue = !debuggedFile && !isDebugMode;
         const orderArray = Array.from(
           { length: jsonIndex ? resData.length : resData.length - 1 },
-          (_, index) => (jsonIndex ? dataLength + index : index + 1)
+          (_, index) => {
+            if (!jsonIndex) return index + 1;
+            if (!isContinue) return index;
+            return dataLength + index;
+          }
         );
         const newData = resData.map((item, index) => {
+          // 第一筆 json 資料一定從第一個 object 開始跑
           if (index === firstOrder && !jsonIndex) {
             return {
               ...item,
@@ -110,7 +118,10 @@ export default function TextSelector({
           };
         });
         setData((prev) => {
-          const newList = [...prev];
+          let newList = [];
+          if (isContinue) {
+            newList = [...prev];
+          }
           newList[jsonIndex] = newData;
           return newList;
         });
@@ -142,33 +153,37 @@ export default function TextSelector({
     return direction;
   };
 
-  const hangleOnChangeInview = (inView, entry) => {
+  function scrollTo(top) {
+    if (!canScroll) return;
+    canScroll = false;
+    window.scrollTo({
+      top,
+      behavior: 'smooth',
+    });
+    document.body.style.overflow = 'hidden';
+
+    // 等待一秒鐘後，恢復滑動功能並還原捲動位置
+    setTimeout(() => {
+      document.body.style.overflow = '';
+      canScroll = true;
+    }, 1000);
+  }
+
+  const hangleOnChangeInview = async (inView, entry) => {
     const currentRatio = entry.intersectionRatio;
     const direction = getScrollDirection();
     const { isIntersecting } = entry;
     if (direction === 'down') {
       if (currentRatio > previousRatio && isIntersecting) {
-        window.scrollTo({
-          top: allContainerRef.current.offsetTop,
-          behavior: 'smooth',
-        });
+        scrollTo(allContainerRef.current.offsetTop);
       } else {
-        window.scrollTo({
-          top: allContainerRef.current.offsetTop + height,
-          behavior: 'smooth',
-        });
+        scrollTo(allContainerRef.current.offsetTop + height);
       }
     } else if (direction === 'up') {
       if (currentRatio < previousRatio) {
-        window.scrollTo({
-          top: allContainerRef.current.offsetTop - height,
-          behavior: 'smooth',
-        });
+        scrollTo(allContainerRef.current.offsetTop - height);
       } else {
-        window.scrollTo({
-          top: allContainerRef.current.offsetTop,
-          behavior: 'smooth',
-        });
+        scrollTo(allContainerRef.current.offsetTop);
       }
     }
     previousRatio = currentRatio;
@@ -191,7 +206,10 @@ export default function TextSelector({
     if (!data[jsonFileIndex]) {
       fetchData(jsonFileIndex);
     }
-  }, [jsonFileIndex]);
+    if (isDebugMode) {
+      setEmphasizedIndex(0);
+    }
+  }, [jsonFileIndex, isDebugMode]);
 
   useEffect(() => {
     if (emphasizedIndex >= dataLength - 3 && emphasizedIndex) {
@@ -200,7 +218,7 @@ export default function TextSelector({
   }, [dataLength, emphasizedIndex]);
 
   useEffect(() => {
-    if (debuggedFile) {
+    if (debuggedFile - 1) {
       setJsonFileIndex(debuggedFile - 1);
     } else {
       setJsonFileIndex(0);
@@ -212,7 +230,7 @@ export default function TextSelector({
     if (typeof element?.getBoundingClientRect === 'function') {
       const rect = element.getBoundingClientRect();
       const leftOffset = rect?.x ?? rect?.left ?? 0;
-      settranslateToParagraph(listRef.current.offsetLeft - leftOffset);
+      setTranslateToParagraph(listRef.current.offsetLeft - leftOffset);
     }
   }, [emphasizedIndex, data]);
 
@@ -224,6 +242,15 @@ export default function TextSelector({
         backgroundColor={backgroundColor}
         leftOffset={leftOffset}
       >
+        {isDebugMode && (
+          <Debugger
+            jsonLength={jsonUrls.length}
+            jsonFileIndex={jsonFileIndex}
+            dataLength={dataLength}
+            emphasizedIndex={emphasizedIndex}
+            setJsonFileIndex={setJsonFileIndex}
+          />
+        )}
         <CaseList
           ref={listRef}
           translateY={
@@ -327,7 +354,7 @@ const CaseList = styled.ul`
   line-height: 180%;
   text-align: justify;
   color: #fff;
-  transition: 1.5s;
+  transition: 1s;
   transform: translate(0, ${(props) => props.translateY}px);
   heigth: 100vh;
 `;
